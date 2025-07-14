@@ -1,0 +1,40 @@
+{
+  "name": "ai-insight-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest"
+  },
+  "dependencies": {
+    "file-type": "^21.0.0",
+    "lucide-react": "^0.525.0",
+    "mammoth": "^1.9.1",
+    "next": "^14.0.0",
+    "odt2html": "^1.0.1",
+    "pdf-parse": "^1.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@eslint/config-array": "^0.21.0",
+    "@eslint/object-schema": "^2.1.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.8.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^9.31.0",
+    "eslint-config-next": "^14.0.0",
+    "glob": "^11.0.3",
+    "jest": "^30.0.4",
+    "postcss": "^8.4.30",
+    "rimraf": "^6.0.1",
+    "tailwindcss": "^3.3.3",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.2.0"
+  }
+}
