@@ -127,7 +127,7 @@ const DEFAULT_VALIDATION_OPTIONS: ValidationOptions = {
  */
 const DEFAULT_SERVICE_CONFIG: AIServiceConfig = {
   baseUrl: 'http://localhost:11434/api', // Ollama API URL
-  timeoutMs: 30000,
+  timeoutMs: 300000,
   useMockData: false // Теперь используем реальный API Ollama
 };
 

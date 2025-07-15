@@ -1,0 +1,92 @@
+import { NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
+import { InsightBoardService } from '@/services/insightBoardService';
+
+/**
+ * Получение всех досок инсайтов пользователя
+ */
+export async function GET(request: Request) {
+  try {
+    // Получение токена пользователя с указанием секретного ключа
+    const token = await getToken({
+      req: request as any,
+      secret: process.env.NEXTAUTH_SECRET || "development-secret-key-do-not-use-in-production"
+    });
+    
+    if (!token || !token.sub) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Получение кратких сведений о досках пользователя
+    const boardSummaries = InsightBoardService.getUserInsightBoardSummaries(token.sub);
+    
+    return NextResponse.json({ boardSummaries });
+  } catch (error) {
+    console.error('Error fetching insight boards:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch insight boards' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Создание новой доски инсайтов
+ */
+export async function POST(request: Request) {
+  try {
+    // Получение токена пользователя с указанием секретного ключа
+    const token = await getToken({
+      req: request as any,
+      secret: process.env.NEXTAUTH_SECRET || "development-secret-key-do-not-use-in-production"
+    });
+    
+    if (!token || !token.sub) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Получение данных из запроса
+    const { 
+      title, 
+      insights, 
+      sourceText, 
+      fileName, 
+      model,
+      temperature,
+      metadata 
+    } = await request.json();
+    
+    if (!title || !insights || !sourceText) {
+      return NextResponse.json(
+        { error: 'Title, insights, and sourceText are required' },
+        { status: 400 }
+      );
+    }
+    
+    // Создание доски инсайтов
+    const board = InsightBoardService.createInsightBoard({
+      title,
+      insights,
+      sourceText,
+      fileName,
+      userId: token.sub,
+      model,
+      temperature,
+      metadata,
+    });
+    
+    return NextResponse.json({ board }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating insight board:', error);
+    return NextResponse.json(
+      { error: 'Failed to create insight board' },
+      { status: 500 }
+    );
+  }
+}

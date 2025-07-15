@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback } from 'react';
 import { InsightResponse, KeyConcept, RelatedLink } from '@/services/aiService';
-import { Loader2, AlertCircle, BookOpen, Link as LinkIcon, Upload, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, BookOpen, Link as LinkIcon, Upload, FileText, Save, CheckCircle } from 'lucide-react';
+import { ClientInsightBoardService } from '@/services/clientInsightBoardService';
 
 /**
  * Интерфейс для моделей Ollama
@@ -56,6 +57,10 @@ export interface DashboardProps {
   onModelChange: (model: string) => void;
   /** Обработчик изменения температуры */
   onTemperatureChange: (temperature: number) => void;
+  /** Прогресс генерации инсайтов (0-100) */
+  progress?: number;
+  /** Имя файла, который был загружен (если есть) */
+  fileName?: string;
 }
 
 /**
@@ -84,10 +89,18 @@ export default function Dashboard({
   modelParams,
   availableModels,
   onModelChange,
-  onTemperatureChange
+  onTemperatureChange,
+  progress = 0,
+  fileName
 }: DashboardProps): JSX.Element {
   // Состояние для отображения индикатора загрузки файла
   const [fileLoading, setFileLoading] = useState<boolean>(false);
+  
+  // Состояния для сохранения доски инсайтов
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [boardTitle, setBoardTitle] = useState<string>("");
 
   /**
    * Обрабатывает загрузку файла
@@ -253,16 +266,18 @@ export default function Dashboard({
           <button
             onClick={onGenerateInsights}
             disabled={isLoading || !inputText.trim()}
-            className={`px-6 py-3 rounded-md text-white font-medium shadow-sm ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'}`}
+            className={`
+              flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium
+              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+              ${isLoading ? 'bg-slate-300 dark:bg-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white'}
+            `}
           >
             {isLoading ? (
-              <span className="flex items-center">
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+              <>
+                <Loader2 className="animate-spin h-4 w-4 mr-2" />
                 Генерация...
-              </span>
-            ) : (
-              'Сгенерировать инсайты'
-            )}
+              </>
+            ) : 'Сгенерировать инсайты'}
           </button>
         </div>
       </div>
@@ -281,27 +296,109 @@ export default function Dashboard({
       {/* Индикатор загрузки на весь экран (если нет результатов) */}
       {isLoading && !hasResults && (
         <div className="my-12 flex flex-col items-center justify-center p-8">
+          <div className="w-64 mb-6">
+            <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-600 rounded-full transition-all duration-300" 
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-1">
+              {progress}% {progress === 100 ? 'Завершено' : 'Выполнено'}
+            </p>
+          </div>
           <Loader2 className="h-12 w-12 text-blue-600 animate-spin mb-4" />
           <p className="text-slate-600 dark:text-slate-300 text-center">Генерация инсайтов с помощью ИИ...</p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">Это может занять несколько секунд</p>
         </div>
       )}
 
-      {/* Отображение результатов анализа, если они есть */}
+      {/* Результаты анализа */}
       {hasResults && insights && (
-        <div className="space-y-6">
-          {/* Метаданные запроса, если они есть */}
-          {insights.metadata && (
-            <div className="mb-4">
-              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-md p-2 inline-flex gap-x-4 text-xs text-slate-500 dark:text-slate-400">
-                <span>Время обработки: {insights.generationTimeMs ? `${(insights.generationTimeMs / 1000).toFixed(2)}s` : 'н/д'}</span>
-                {insights.metadata.requestLength && (
-                  <span>Длина запроса: {insights.metadata.requestLength} символов</span>
-                )}
+        <div className="mt-8 space-y-6">
+          {/* Секция результатов с заголовком и кнопками действий */}
+          <div className="flex flex-col sm:flex-row justify-between gap-4 mb-4">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+              Результаты анализа
+            </h2>
+            <div className="flex gap-3 items-center">
+              {saveSuccess && (
+                <div className="flex items-center text-green-600 dark:text-green-400 text-sm">
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Сохранено
+                </div>
+              )}
+              
+              {saveError && (
+                <div className="text-red-500 text-sm flex items-center">
+                  <AlertCircle className="h-4 w-4 mr-1" />
+                  {saveError}
+                </div>
+              )}
+              
+              {/* Форма для ввода заголовка и сохранения */}
+              <div className="flex">
+                <input
+                  type="text"
+                  placeholder="Введите название доски"
+                  value={boardTitle}
+                  onChange={(e) => setBoardTitle(e.target.value)}
+                  className="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-l px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-white"
+                />
+                <button
+                  onClick={async () => {
+                    if (!boardTitle.trim()) {
+                      setSaveError('Введите название доски');
+                      return;
+                    }
+                    
+                    try {
+                      setIsSaving(true);
+                      setSaveError(null);
+                      setSaveSuccess(false);
+                      
+                      await ClientInsightBoardService.saveInsightResults(
+                        boardTitle,
+                        insights,
+                        inputText,
+                        modelParams.model,
+                        modelParams.temperature,
+                        fileName
+                      );
+                      
+                      setSaveSuccess(true);
+                      setTimeout(() => setSaveSuccess(false), 3000);
+                    } catch (err) {
+                      console.error('Ошибка при сохранении:', err);
+                      setSaveError('Ошибка при сохранении');
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }}
+                  disabled={isSaving || !insights}
+                  className={`
+                    flex items-center justify-center rounded-r px-3 py-1 text-sm font-medium
+                    focus:outline-none focus:ring-1 focus:ring-blue-500
+                    ${isSaving ? 'bg-slate-300 dark:bg-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white'}
+                  `}
+                >
+                  {isSaving ? (
+                    <Loader2 className="animate-spin h-4 w-4" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                </button>
               </div>
+              
+              <button
+                onClick={onReset}
+                className="text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-1 rounded text-slate-700 dark:text-slate-200"
+              >
+                Очистить
+              </button>
             </div>
-          )}
-          
+          </div>
+
           {/* Summary секция */}
           <div className="bg-white dark:bg-slate-800 shadow-md rounded-lg p-6">
             <div className="flex items-center mb-4">

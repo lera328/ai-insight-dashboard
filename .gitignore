@@ -80,3 +80,6 @@ AppData/Local/Temp/
 
 # Codeium files
 .codeium/
+
+# Data files with saved insight boards
+/data/

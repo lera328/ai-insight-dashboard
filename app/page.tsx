@@ -2,7 +2,11 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import Dashboard from '../components/Dashboard';
+import NavBar from '../components/NavBar';
+import { useSession } from 'next-auth/react';
 import { InsightResponse } from '@/services/aiService';
+import { queueService } from '@/services/queueService';
+import RouteGuard from '@/components/RouteGuard';
 
 // Интерфейс для моделей Ollama
 interface OllamaModel {
@@ -29,6 +33,9 @@ export default function Home(): JSX.Element {
   
   // Состояние для процесса загрузки
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  
+  // Состояние для отображения прогресса генерации
+  const [progress, setProgress] = useState<number>(0);
   
   // Состояние для результатов анализа
   const [insights, setInsights] = useState<InsightResponse | null>(null);
@@ -117,41 +124,40 @@ export default function Home(): JSX.Element {
     setError(null);
     setIsLoading(true);
     setInsights(null);
+    setProgress(0);
     
-    try {
-      // Отправляем запрос к API с параметрами модели
-      const response = await fetch('/api/insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          topic: inputText,
-          modelParams: modelParams
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Произошла ошибка при обработке запроса');
+    // Добавляем запрос в очередь вместо прямого вызова API
+    queueService.enqueue(
+      { 
+        topic: inputText, 
+        modelParams: modelParams 
+      },
+      // Обработчик успешного завершения
+      (result: InsightResponse) => {
+        setInsights(result);
+        setHasResults(true);
+        setIsLoading(false);
+        
+        // Логируем успешный результат
+        console.log('Получены инсайты:', {
+          summary: result.summary.substring(0, 50) + '...',
+          keyConcepts: result.keyConcepts.length,
+          relatedLinks: result.relatedLinks.length,
+          metadata: result.metadata
+        });
+      },
+      // Обработчик ошибки
+      (err: Error) => {
+        console.error('Ошибка при получении инсайтов:', err);
+        setError(err.message || 'Неизвестная ошибка');
+        setHasResults(false);
+        setIsLoading(false);
+      },
+      // Обработчик прогресса
+      (progressValue: number) => {
+        setProgress(prev => Math.min(prev + progressValue, 95)); // Максимум 95% до получения результата
       }
-      
-      const result: InsightResponse = await response.json();
-      setInsights(result);
-      setHasResults(true);
-      
-      // Логируем успешный результат
-      console.log('Получены инсайты:', {
-        summary: result.summary.substring(0, 50) + '...',
-        keyConcepts: result.keyConcepts.length,
-        relatedLinks: result.relatedLinks.length,
-        metadata: result.metadata
-      });
-    } catch (err) {
-      console.error('Ошибка при получении инсайтов:', err);
-      setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
-      setHasResults(false);
-    } finally {
-      setIsLoading(false);
-    }
+    );
   }, [inputText, modelParams]);
   
   /**
@@ -164,23 +170,45 @@ export default function Home(): JSX.Element {
     setHasResults(false);
   }, []);
 
+  // Получаем данные сессии для персонализации интерфейса
+  const { data: session } = useSession();
+  const userName = session?.user?.name || "Пользователь";
+
   return (
-    <div className="min-h-screen w-full py-12 px-4 sm:px-6 md:px-8">
-      <Dashboard 
-        inputText={inputText}
-        onInputChange={handleInputChange}
-        onFileUpload={handleFileUpload}
-        isLoading={isLoading}
-        error={error}
-        hasResults={!!insights}
-        insights={insights}
-        onGenerateInsights={handleGenerateInsights}
-        onReset={handleReset}
-        modelParams={modelParams}
-        availableModels={availableModels}
-        onModelChange={handleModelChange}
-        onTemperatureChange={handleTemperatureChange}
-      />
-    </div>
+    <RouteGuard>
+      <div className="min-h-screen flex flex-col">
+        <NavBar />
+        
+        <div className="flex-1 py-6 px-4 sm:px-6 md:px-8">
+          {/* Персонализированное приветствие */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold text-slate-800 dark:text-white">
+              Добро пожаловать, {userName}!
+            </h1>
+            <p className="text-slate-600 dark:text-slate-300">
+              Используйте AI-Insight Dashboard для анализа текста и получения полезных инсайтов
+            </p>
+          </div>
+          
+          <Dashboard 
+            inputText={inputText}
+            onInputChange={handleInputChange}
+            onFileUpload={handleFileUpload}
+            isLoading={isLoading}
+            error={error}
+            hasResults={!!insights}
+            insights={insights}
+            onGenerateInsights={handleGenerateInsights}
+            onReset={handleReset}
+            modelParams={modelParams}
+            availableModels={availableModels}
+            onModelChange={handleModelChange}
+            onTemperatureChange={handleTemperatureChange}
+            progress={progress}
+            fileName={fileInfo?.name}
+          />
+        </div>
+      </div>
+    </RouteGuard>
   );
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { AuthProvider } from '@/providers/AuthProvider';
+import { Navigation } from '@/components/Navigation';
 
 // Определяем шрифт Inter для использования во всем приложении
 const inter = Inter({ 
@@ -39,9 +41,14 @@ export default function RootLayout({
   return (
     <html lang="ru" className={inter.variable}>
       <body className={`${inter.className} antialiased`}>
-        <main className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-          {children}
-        </main>
+        <AuthProvider>
+          <div className="flex flex-col min-h-screen">
+            <Navigation />
+            <main className="flex-grow bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+              {children}
+            </main>
+          </div>
+        </AuthProvider>
       </body>
     </html>
   );
