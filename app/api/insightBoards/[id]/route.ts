@@ -23,8 +23,8 @@ export async function GET(
       );
     }
     
-    // Получение доски инсайтов
-    const board = InsightBoardService.getInsightBoard(params.id);
+    // Получение доски инсайтов (асинхронно)
+    const board = await InsightBoardService.getInsightBoard(params.id);
     
     if (!board) {
       return NextResponse.json(
@@ -34,7 +34,9 @@ export async function GET(
     }
     
     // Проверяем, что доска принадлежит пользователю
-    if (board.userId !== token.sub) {
+    // Используем специальный метод для проверки принадлежности
+    const isOwned = await InsightBoardService.isInsightBoardOwnedByUser(params.id, token.sub);
+    if (!isOwned) {
       return NextResponse.json(
         { error: 'Access denied' },
         { status: 403 }
@@ -72,8 +74,8 @@ export async function PUT(
       );
     }
     
-    // Проверяем существование доски
-    const existingBoard = InsightBoardService.getInsightBoard(params.id);
+    // Проверяем существование доски (асинхронно)
+    const existingBoard = await InsightBoardService.getInsightBoard(params.id);
     
     if (!existingBoard) {
       return NextResponse.json(
@@ -83,7 +85,8 @@ export async function PUT(
     }
     
     // Проверяем, что доска принадлежит пользователю
-    if (existingBoard.userId !== token.sub) {
+    const isOwned = await InsightBoardService.isInsightBoardOwnedByUser(params.id, token.sub);
+    if (!isOwned) {
       return NextResponse.json(
         { error: 'Access denied' },
         { status: 403 }
@@ -93,8 +96,8 @@ export async function PUT(
     // Получение данных из запроса
     const { title, metadata } = await request.json();
     
-    // Обновление доски
-    const board = InsightBoardService.updateInsightBoard({
+    // Обновление доски (асинхронно)
+    const board = await InsightBoardService.updateInsightBoard({
       id: params.id,
       title,
       metadata,
@@ -131,8 +134,8 @@ export async function DELETE(
       );
     }
     
-    // Проверяем существование доски
-    const existingBoard = InsightBoardService.getInsightBoard(params.id);
+    // Проверяем, существует ли доска (асинхронно)
+    const existingBoard = await InsightBoardService.getInsightBoard(params.id);
     
     if (!existingBoard) {
       return NextResponse.json(
@@ -142,24 +145,18 @@ export async function DELETE(
     }
     
     // Проверяем, что доска принадлежит пользователю
-    if (existingBoard.userId !== token.sub) {
+    const isOwned = await InsightBoardService.isInsightBoardOwnedByUser(params.id, token.sub);
+    if (!isOwned) {
       return NextResponse.json(
         { error: 'Access denied' },
         { status: 403 }
       );
     }
     
-    // Удаление доски
-    const success = InsightBoardService.deleteInsightBoard(params.id);
+    // Удаление доски (асинхронно)
+    const success = await InsightBoardService.deleteInsightBoard(params.id);
     
-    if (success) {
-      return NextResponse.json({ success: true });
-    } else {
-      return NextResponse.json(
-        { error: 'Failed to delete insight board' },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting insight board:', error);
     return NextResponse.json(

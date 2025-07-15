@@ -1,8 +1,11 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { prisma } from "@/lib/prisma";
+import { compare, hash } from "bcryptjs";
 
-// Простой список тестовых пользователей
-const users = [
+// Простой список тестовых пользователей для начальной инициализации
+const defaultUsers = [
   {
     id: "1",
     name: "Администратор",
@@ -19,8 +22,44 @@ const users = [
   },
 ];
 
-// Упрощенная настройка NextAuth
+// Функция для проверки и создания тестовых пользователей в БД
+async function initializeDefaultUsers() {
+  for (const user of defaultUsers) {
+    const existingUser = await prisma.user.findUnique({
+      where: { email: user.email },
+    });
+    
+    if (!existingUser) {
+      await prisma.user.create({
+        data: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          // Хешируем пароль для безопасного хранения
+          password: await hash(user.password, 10),
+        },
+      });
+      console.log(`Created default user: ${user.email}`);
+    }
+  }
+}
+
+// Инициализируем пользователей при старте приложения
+// Оборачиваем в функцию для использования в async/await
+(async () => {
+  try {
+    console.log("Initializing default users...");
+    await initializeDefaultUsers();
+    console.log("Default users initialization complete.");
+  } catch (error) {
+    console.error("Error initializing users:", error);
+  }
+})();
+
+// Настройка NextAuth с использованием Prisma адаптера
 const handler = NextAuth({
+  adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -34,20 +73,28 @@ const handler = NextAuth({
           return null;
         }
 
-        const user = users.find(
-          (user) => 
-            user.email === credentials.email && 
-            user.password === credentials.password
-        );
+        // Ищем пользователя в базе данных по email
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
+        });
 
-        console.log('Login attempt:', credentials.email, user ? 'success' : 'failed');
+        if (!user || !user.password) {
+          console.log('User not found or has no password');
+          return null;
+        }
+
+        // Проверяем хеш пароля
+        const isPasswordValid = await compare(credentials.password, user.password);
         
-        if (user) {
+        console.log('Login attempt:', credentials.email, isPasswordValid ? 'success' : 'failed');
+        
+        if (isPasswordValid) {
           return {
             id: user.id,
             name: user.name,
             email: user.email,
             role: user.role,
+            image: user.image
           };
         }
         

@@ -1,190 +1,155 @@
 /**
  * Сервис для управления досками инсайтов
- * В текущей реализации данные хранятся в JSON файлах
- * В рабочей среде следует заменить на подключение к базе данных
+ * Работает с базой данных PostgreSQL через Prisma ORM
  */
 
 import { 
-  InsightBoard, 
   CreateInsightBoardParams, 
   UpdateInsightBoardParams,
   InsightBoardSummary
 } from '@/types/insightBoard';
-import { FileStorageService } from './fileStorageService';
+import { DatabaseService } from './databaseService';
+import { InsightBoard } from '@prisma/client';
 
-/**
- * Генерирует случайный идентификатор
- * @returns {string} Строковый случайный идентификатор
- */
-function generateId(): string {
-  // Создание рандомного идентификатора без внешних зависимостей
-  return 'board_' + 
-    Date.now().toString(36) + '_' + 
-    Math.random().toString(36).substring(2, 15) + '_' +
-    Math.random().toString(36).substring(2, 15);
-}
-
-/**
- * Получить текущие доски инсайтов из файлового хранилища
- */
-function getBoardsFromStorage(): Map<string, InsightBoard> {
-  const boards = FileStorageService.readData<Record<string, InsightBoard>>('insightBoards', {});
-  return new Map(Object.entries(boards));
-}
-
-/**
- * Сохранить доски инсайтов в файловое хранилище
- */
-function saveBoardsToStorage(boards: Map<string, InsightBoard>): void {
-  const boardsObj = Object.fromEntries(boards.entries());
-  FileStorageService.saveData('insightBoards', boardsObj);
-}
+// Идентификаторы теперь генерируются Prisma автоматически
 
 /**
  * Сервис для управления досками инсайтов
+ * Работает с базой данных через DatabaseService
  */
 export class InsightBoardService {
   /**
    * Создает новую доску инсайтов
+   * @param params Параметры для создания доски
+   * @returns Созданная доска инсайтов
    */
-  static createInsightBoard(params: CreateInsightBoardParams): InsightBoard {
-    const now = Date.now();
-    const id = generateId();
-    
-    const board: InsightBoard = {
-      id,
+  static async createInsightBoard(params: CreateInsightBoardParams): Promise<InsightBoard> {
+    const board = await DatabaseService.createInsightBoard({
       title: params.title,
       insights: params.insights,
       sourceText: params.sourceText,
       fileName: params.fileName,
-      createdAt: now,
-      updatedAt: now,
       userId: params.userId,
       model: params.model,
       temperature: params.temperature,
       metadata: params.metadata || {},
-    };
-    
-    // Загружаем текущие доски из хранилища
-    const insightBoards = getBoardsFromStorage();
-    
-    // Сохраняем новую доску
-    insightBoards.set(id, board);
-    
-    // Сохраняем в файловое хранилище
-    saveBoardsToStorage(insightBoards);
+    });
     
     return board;
   }
   
   /**
    * Получает доску инсайтов по ID
+   * @param id ID доски инсайтов
+   * @returns Доска инсайтов или null, если не найдена
    */
-  static getInsightBoard(id: string): InsightBoard | null {
-    const insightBoards = getBoardsFromStorage();
-    return insightBoards.get(id) || null;
+  static async getInsightBoard(id: string): Promise<InsightBoard | null> {
+    return await DatabaseService.getInsightBoard(id);
   }
   
   /**
    * Обновляет доску инсайтов
+   * @param params Параметры для обновления доски
+   * @returns Обновленная доска инсайтов или null, если доска не найдена
    */
-  static updateInsightBoard(params: UpdateInsightBoardParams): InsightBoard | null {
-    const insightBoards = getBoardsFromStorage();
-    const board = insightBoards.get(params.id);
-    
-    if (!board) {
+  static async updateInsightBoard(params: UpdateInsightBoardParams): Promise<InsightBoard | null> {
+    try {
+      // Создаем объект с данными для обновления
+      const updateData: Partial<InsightBoard> = {};
+      
+      if (params.title !== undefined) {
+        updateData.title = params.title;
+      }
+      
+      if (params.metadata !== undefined) {
+        updateData.metadata = params.metadata;
+      }
+      
+      return await DatabaseService.updateInsightBoard(params.id, updateData);
+    } catch (error) {
+      console.error('Error updating insight board:', error);
       return null;
     }
-    
-    // Обновляем поля
-    if (params.title !== undefined) {
-      board.title = params.title;
-    }
-    
-    if (params.metadata !== undefined) {
-      board.metadata = {
-        ...board.metadata,
-        ...params.metadata,
-      };
-    }
-    
-    board.updatedAt = Date.now();
-    
-    // Сохраняем обновленную доску
-    insightBoards.set(params.id, board);
-    
-    // Сохраняем в файловое хранилище
-    saveBoardsToStorage(insightBoards);
-    
-    return board;
   }
   
   /**
    * Удаляет доску инсайтов
+   * @param id ID доски инсайтов
+   * @returns true если успешно удалено, false если нет
    */
-  static deleteInsightBoard(id: string): boolean {
-    const insightBoards = getBoardsFromStorage();
-    const result = insightBoards.delete(id);
-    
-    if (result) {
-      // Сохраняем изменения в файловое хранилище
-      saveBoardsToStorage(insightBoards);
+  static async deleteInsightBoard(id: string): Promise<boolean> {
+    try {
+      await DatabaseService.deleteInsightBoard(id);
+      return true;
+    } catch (error) {
+      console.error('Error deleting insight board:', error);
+      return false;
     }
-    
-    return result;
   }
   
   /**
    * Получает все доски инсайтов пользователя
+   * @param userId ID пользователя
+   * @returns Массив досок инсайтов
    */
-  static getUserInsightBoards(userId: string): InsightBoard[] {
-    const insightBoards = getBoardsFromStorage();
-    return Array.from(insightBoards.values())
-      .filter(board => board.userId === userId)
-      .sort((a, b) => b.updatedAt - a.updatedAt); // Сортировка по времени обновления
+  static async getUserInsightBoards(userId: string): Promise<InsightBoard[]> {
+    return await DatabaseService.getUserInsightBoards(userId);
   }
   
   /**
    * Получает краткую информацию о всех досках инсайтов пользователя
+   * @param userId ID пользователя
+   * @returns Массив кратких данных о досках инсайтов
    */
-  static getUserInsightBoardSummaries(userId: string): InsightBoardSummary[] {
-    return this.getUserInsightBoards(userId).map(board => ({
+  static async getUserInsightBoardSummaries(userId: string): Promise<InsightBoardSummary[]> {
+    const boards = await this.getUserInsightBoards(userId);
+    
+    return boards.map(board => ({
       id: board.id,
       title: board.title,
-      createdAt: board.createdAt,
-      updatedAt: board.updatedAt,
-      model: board.model,
-      fileName: board.fileName,
+      createdAt: board.createdAt instanceof Date ? board.createdAt.getTime() : Number(board.createdAt),
+      updatedAt: board.updatedAt instanceof Date ? board.updatedAt.getTime() : Number(board.updatedAt),
+      model: board.model || undefined,
+      fileName: board.fileName || undefined,
     }));
   }
   
   /**
    * Удаляет все доски инсайтов пользователя
+   * @param userId ID пользователя
+   * @returns Количество удаленных досок
    */
-  static deleteUserInsightBoards(userId: string): number {
-    let count = 0;
-    const insightBoards = getBoardsFromStorage();
-    
-    // Используем более совместимый способ итерации по Map
-    const idsToDelete: string[] = [];
-    
-    insightBoards.forEach((board, id) => {
-      if (board.userId === userId) {
-        idsToDelete.push(id);
+  static async deleteUserInsightBoards(userId: string): Promise<number> {
+    try {
+      const boards = await this.getUserInsightBoards(userId);
+      
+      for (const board of boards) {
+        await DatabaseService.deleteInsightBoard(board.id);
       }
-    });
-    
-    // Удаляем доски после итерации
-    idsToDelete.forEach(id => {
-      insightBoards.delete(id);
-      count++;
-    });
-    
-    // Сохраняем изменения в файловое хранилище
-    if (count > 0) {
-      saveBoardsToStorage(insightBoards);
+      
+      return boards.length;
+    } catch (error) {
+      console.error('Error deleting user insight boards:', error);
+      return 0;
     }
-    
-    return count;
+  }
+  
+  /**
+   * Поиск досок инсайтов по запросу
+   * @param searchTerm Строка для поиска
+   * @returns Массив досок инсайтов, соответствующих поиску
+   */
+  static async searchInsightBoards(searchTerm: string): Promise<InsightBoard[]> {
+    return await DatabaseService.searchInsightBoards(searchTerm);
+  }
+  
+  /**
+   * Проверяет, принадлежит ли доска инсайтов пользователю
+   * @param boardId ID доски инсайтов
+   * @param userId ID пользователя
+   * @returns true, если доска принадлежит пользователю
+   */
+  static async isInsightBoardOwnedByUser(boardId: string, userId: string): Promise<boolean> {
+    return await DatabaseService.isInsightBoardOwnedByUser(boardId, userId);
   }
 }

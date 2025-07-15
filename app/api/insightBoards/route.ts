@@ -3,11 +3,11 @@ import { getToken } from 'next-auth/jwt';
 import { InsightBoardService } from '@/services/insightBoardService';
 
 /**
- * РџРѕР»СѓС‡РµРЅРёРµ РІСЃРµС… РґРѕСЃРѕРє РёРЅСЃР°Р№С‚РѕРІ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+ * Получение всех досок инсайтов пользователя
  */
 export async function GET(request: Request) {
   try {
-    // РџРѕР»СѓС‡РµРЅРёРµ С‚РѕРєРµРЅР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ СЃ СѓРєР°Р·Р°РЅРёРµРј СЃРµРєСЂРµС‚РЅРѕРіРѕ РєР»СЋС‡Р°
+    // Получение токена пользователя с указанием секретного ключа
     const token = await getToken({
       req: request as any,
       secret: "development-secret-key-do-not-use-in-production"
@@ -20,8 +20,8 @@ export async function GET(request: Request) {
       );
     }
     
-    // РџРѕР»СѓС‡РµРЅРёРµ РєСЂР°С‚РєРёС… СЃРІРµРґРµРЅРёР№ Рѕ РґРѕСЃРєР°С… РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
-    const boardSummaries = InsightBoardService.getUserInsightBoardSummaries(token.sub);
+    // Получение кратких сведений о досках пользователя с использованием асинхронного метода
+    const boardSummaries = await InsightBoardService.getUserInsightBoardSummaries(token.sub);
     
     return NextResponse.json({ boardSummaries });
   } catch (error) {
@@ -34,11 +34,11 @@ export async function GET(request: Request) {
 }
 
 /**
- * РЎРѕР·РґР°РЅРёРµ РЅРѕРІРѕР№ РґРѕСЃРєРё РёРЅСЃР°Р№С‚РѕРІ
+ * Создание новой доски инсайтов
  */
 export async function POST(request: Request) {
   try {
-    // РџРѕР»СѓС‡РµРЅРёРµ С‚РѕРєРµРЅР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ СЃ СѓРєР°Р·Р°РЅРёРµРј СЃРµРєСЂРµС‚РЅРѕРіРѕ РєР»СЋС‡Р°
+    // Получение токена пользователя с указанием секретного ключа
     const token = await getToken({
       req: request as any,
       secret: "development-secret-key-do-not-use-in-production"
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       );
     }
     
-    // РџРѕР»СѓС‡РµРЅРёРµ РґР°РЅРЅС‹С… РёР· Р·Р°РїСЂРѕСЃР°
+    // Получение данных из запроса
     const { 
       title, 
       insights, 
@@ -69,23 +69,53 @@ export async function POST(request: Request) {
       );
     }
     
-    // РЎРѕР·РґР°РЅРёРµ РґРѕСЃРєРё РёРЅСЃР°Р№С‚РѕРІ
-    const board = InsightBoardService.createInsightBoard({
-      title,
-      insights,
-      sourceText,
-      fileName,
-      userId: token.sub,
-      model,
-      temperature,
-      metadata,
-    });
-    
-    return NextResponse.json({ board }, { status: 201 });
-  } catch (error) {
+    // Проверяем, существует ли пользователь в базе данных
+    try {
+      // Импортируем Prisma клиент
+      const { prisma } = await import('@/lib/prisma');
+      
+      // Проверяем, есть ли пользователь с указанным ID
+      const user = await prisma.user.findUnique({
+        where: { id: token.sub }
+      });
+
+      if (!user) {
+        console.log(`Создание пользователя с ID: ${token.sub}`);
+        // Создаем пользователя, если он не существует
+        await prisma.user.create({
+          data: {
+            id: token.sub,
+            name: token.name || 'Пользователь',
+            email: token.email || `user-${token.sub}@example.com`,
+            role: 'user'
+          }
+        });
+      }
+      
+      // Создание доски инсайтов с использованием асинхронного метода
+      const board = await InsightBoardService.createInsightBoard({
+        title,
+        insights,
+        sourceText,
+        fileName,
+        userId: token.sub,
+        model,
+        temperature,
+        metadata
+      });
+      
+      return NextResponse.json({ board }, { status: 201 });
+    } catch (error: any) {
+      console.error('Error creating insight board:', error);
+      return NextResponse.json(
+        { error: `Failed to create insight board: ${error?.message || 'Unknown error'}` },
+        { status: 500 }
+      );
+    }
+  } catch (error: any) {
     console.error('Error creating insight board:', error);
     return NextResponse.json(
-      { error: 'Failed to create insight board' },
+      { error: `Failed to create insight board: ${error?.message || 'Unknown error'}` },
       { status: 500 }
     );
   }
